@@ -1,0 +1,310 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <link crossorigin="anonymous" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" rel="stylesheet">
+    <link crossorigin="anonymous" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
+          rel="stylesheet">
+    <title>Chatting Application</title>
+    <style>
+        body {
+            background-color: #74EBD5;
+            background-image: linear-gradient(90deg, #74EBD5 0%, #9FACE6 100%);
+
+            min-height: 100vh;
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            width: 5px;
+            background: #f5f5f5;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            width: 1em;
+            background-color: #ddd;
+            outline: 1px solid slategrey;
+            border-radius: 1rem;
+        }
+
+        .chat-box {
+            height: 510px;
+            overflow-y: scroll;
+        }
+
+        .rounded-lg {
+            border-radius: 0.5rem;
+        }
+
+        input::placeholder {
+            font-size: 0.9rem;
+            color: #999;
+        }
+
+        .message-username {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            border-bottom: 1px solid lightgrey;
+        }
+    </style>
+</head>
+<body>
+
+
+<div class="container py-5 px-4">
+    <!-- For demo purpose-->
+    <header class="text-center">
+        <h1>CCP</h1>
+        <p id="stateLabel">Ready to connect...</p>
+
+        <div>
+            <label for="userName">Username:</label>
+            <input id="userName"/>
+            <button id="connectButton" type="submit">Connect</button>
+            <button disabled id="closeButton">Disconnect</button>
+        </div>
+    </header>
+
+    <div class="row rounded-lg overflow-hidden shadow">
+        <!-- Chat Box-->
+        <div class="col-4 bg-white border-right">
+            <div class="pt-2 px-2 pb-0">
+                <h4>Online Users</h4>
+            </div>
+            <hr>
+            <ul id="onlineUserList">
+
+            </ul>
+        </div>
+        <div class="col-8 px-0">
+            <div class="px-4 py-5 chat-box bg-white" id="chat-box">
+                <!-- Sender Message-->
+
+                <div id="chatLog"></div>
+
+            </div>
+
+            <!-- Typing area -->
+            <div class="input-group">
+
+                <input class="form-control rounded-0 border-0 py-4 bg-light"
+                       disabled
+                       id="sendMessage"
+                       placeholder="Type a message"
+                       style="padding-right: 60px"
+                       type="text"
+                />
+                <div class="input-group-append" style="position: absolute;right: 10px;top: 24%;z-index: 9999">
+                    <button class="btn btn-link" disabled id="sendButton" type="submit"><i
+                            class="fa fa-paper-plane"></i></button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<script crossorigin="anonymous"
+        integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+        src="https://code.jquery.com/jquery-3.2.1.slim.min.js"></script>
+<script crossorigin="anonymous"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"></script>
+<script crossorigin="anonymous"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+<script>
+
+    let chatLog = document.getElementById("chatLog");
+    let userName = document.getElementById("userName");
+    let socket;
+    window.addEventListener('beforeunload', function (e) {
+        if (userName.value && socket.readyState === WebSocket.OPEN)
+            sessionStorage.setItem('chatLog', JSON.stringify(chatLog.innerHTML));
+        else
+            sessionStorage.clear();
+    });
+    let usersList = document.getElementById("onlineUserList");
+    let connectButton = document.getElementById("connectButton");
+    let stateLabel = document.getElementById("stateLabel");
+    let sendMessage = document.getElementById("sendMessage");
+    let sendButton = document.getElementById("sendButton");
+    let chatbox = document.getElementById("chat-box");
+    let closeButton = document.getElementById("closeButton");
+
+    let connectionUrl = "ws://localhost:5001/ws?username=";
+
+
+    function updateState() {
+        function disable() {
+            sendMessage.disabled = true;
+            sendButton.disabled = true;
+            closeButton.disabled = true;
+            usersList.disabled = true;
+        }
+
+        function enable() {
+            sendMessage.disabled = false;
+            sendButton.disabled = false;
+            closeButton.disabled = false;
+            usersList.disabled = false;
+        }
+
+        connectButton.disabled = true;
+        userName.disabled = true;
+
+        if (!socket) {
+            disable();
+        } else {
+            switch (socket.readyState) {
+                case WebSocket.CLOSED:
+                    stateLabel.innerHTML = "Closed";
+                    disable();
+                    connectButton.disabled = false;
+                    userName.disabled = false;
+                    break;
+                case WebSocket.CLOSING:
+                    stateLabel.innerHTML = "Closing...";
+                    disable();
+                    break;
+                case WebSocket.CONNECTING:
+                    stateLabel.innerHTML = "Connecting...";
+                    disable();
+                    break;
+                case WebSocket.OPEN:
+                    stateLabel.innerHTML = "Open";
+                    sessionStorage.setItem('user', userName.value)
+                    enable();
+                    break;
+                default:
+                    stateLabel.innerHTML = "Unknown WebSocket State: " + htmlEscape(socket.readyState);
+                    disable();
+                    break;
+            }
+        }
+    }
+
+    closeButton.onclick = function () {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            alert("socket not connected");
+        }
+        socket.close(1000, "Closing from client");
+        sessionStorage.clear();
+    };
+
+    sendButton.onclick = function () {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            alert("socket not connected");
+        }
+        let data = sendMessage.value;
+
+        let message = {};
+        message.Type = "chat";
+        message.Sender = userName.value;
+        message.Content = data;
+        message.Receiver = "";
+        message.IsPrivate = false;
+        socket.send(JSON.stringify(message));
+
+        sendMessage.value = "";
+    };
+
+    connectButton.onclick = function () {
+        stateLabel.innerHTML = "Connecting";
+        socket = new WebSocket(connectionUrl + userName.value);
+        socket.onopen = function (event) {
+            updateState();
+            if (sessionStorage.getItem('chatLog')) {
+                chatLog.innerHTML = "";
+                chatLog.innerHTML = JSON.parse(sessionStorage.getItem('chatLog'));
+            }
+        };
+        socket.onclose = function (event) {
+            updateState();
+            chatLog.innerHTML += '<p class="text-center">Connection closed: ' + htmlEscape(event.reason) + '</p>';
+        };
+        socket.onerror = updateState;
+        socket.onmessage = function (event) {
+            let receivedMessage = JSON.parse(event.data);
+
+            if (receivedMessage.Content) {
+                if (isJson(receivedMessage.Content)) {
+                    const message = JSON.parse(receivedMessage.Content);
+                    chatLog.innerHTML += userName.value !== message.username ?
+                        `<div class="media w-50 mb-3"><img src="https://bootstrapious.com/i/snippets/sn-chat/avatar.svg" alt="user" width="50" class="rounded-circle">
+                            <div class="media-body ml-3">
+                            
+                                <div class="bg-light rounded py-2 px-3 mb-2">
+                                <p class="text-muted message-username" >${message.username}</p>
+                                    <p class="text-small mb-0 text-muted">${htmlEscape(message.message)}</p>
+                                </div>
+                            </div>
+                        </div>`
+                        :
+                        `<div class="media w-50 ml-auto mb-3">
+                        <div class="media-body">
+                            <div class="bg-primary rounded py-2 px-3 mb-2">
+                                <p class="text-light message-username" >${message.username}</p>
+                                <p class="text-small mb-0 text-white">${htmlEscape(message.message)}</p>
+                            </div>
+                        </div>
+                    </div>`
+                    ;
+                } else {
+                    chatLog.innerHTML += '<p class="text-center system-message">' + htmlEscape(receivedMessage.Content) + '</p>';
+                }
+                scrollToTargetAdjusted()
+            }
+
+            if (receivedMessage.Type === "CONNECTION" && receivedMessage.Users) {
+
+                usersList.innerHTML = "";
+                receivedMessage.Users.forEach((user) => {
+                    let c = document.createElement("li");
+                    c.innerHTML = `<p>${user}</p>`;
+                    usersList.append(c);
+                });
+            }
+        };
+    };
+
+    function htmlEscape(str) {
+        return str.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function isJson(str) {
+        try {
+            JSON.parse(str);
+        } catch (e) {
+            return false;
+        }
+        return true;
+    }
+
+    function scrollToTargetAdjusted() {
+        chatbox.scrollTo({
+            top: 500,
+            behavior: "smooth"
+        })
+    }
+
+    if (sessionStorage.getItem('user')) {
+        userName.value = sessionStorage.getItem('user');
+        connectButton.click()
+    }
+
+</script>
+
+</body>
+</html>
